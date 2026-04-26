@@ -1,0 +1,16 @@
+.env
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite3
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+venv/
+.venv/
+dist/
+build/
+vizzy_chat.db
+test_vizzy_chat.db
