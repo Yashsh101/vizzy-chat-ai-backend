@@ -1,16 +1,31 @@
+# Env
 .env
-.pytest_cache/
+
+# Python cache
 __pycache__/
 *.py[cod]
-*.db
-*.sqlite3
-.coverage
-htmlcov/
-.mypy_cache/
-.ruff_cache/
+
+# Virtual env
 venv/
 .venv/
+
+# Test/cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# DB
+*.db
+*.sqlite3
+
+# Coverage
+.coverage
+htmlcov/
+
+# Build
 dist/
 build/
+
+# Project DB
 vizzy_chat.db
 test_vizzy_chat.db
