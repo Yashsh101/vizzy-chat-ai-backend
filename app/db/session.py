@@ -1,9 +1,15 @@
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 import logging
 from pathlib import Path
+from typing import Any
 
-from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import inspect, text
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.core.config import get_settings
 from app.db.base import Base
@@ -11,9 +17,12 @@ from app.db.base import Base
 settings = get_settings()
 logger = logging.getLogger("vizzy_chat.db")
 
-connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
-engine = create_engine(settings.database_url, connect_args=connect_args)
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+engine: AsyncEngine = create_async_engine(
+    settings.database_url,
+    echo=False,
+    future=True,
+)
+SessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False, autocommit=False)
 
 EXPECTED_TABLE_COLUMNS: dict[str, set[str]] = {
     "chat_history": {
@@ -41,53 +50,67 @@ EXPECTED_TABLE_COLUMNS: dict[str, set[str]] = {
 }
 
 
-def get_db() -> Generator[Session, None, None]:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with SessionLocal() as session:
+        yield session
 
 
 def _sqlite_database_path() -> Path | None:
-    prefix = "sqlite:///"
-    if not settings.database_url.startswith(prefix):
-        return None
-    return Path(settings.database_url.replace(prefix, "", 1))
+    prefixes = ("sqlite+aiosqlite:///", "sqlite:///")
+    for prefix in prefixes:
+        if settings.database_url.startswith(prefix):
+            return Path(settings.database_url.replace(prefix, "", 1))
+    return None
 
 
-def get_schema_mismatches() -> dict[str, list[str]]:
-    inspector = inspect(engine)
-    mismatches: dict[str, list[str]] = {}
+async def _run_inspector(operation: str) -> Any:
+    def inner(sync_connection):
+        inspector = inspect(sync_connection)
+        if operation == "table_names":
+            return inspector.get_table_names()
+        raise ValueError(f"Unsupported inspector operation: {operation}")
 
-    for table_name, expected_columns in EXPECTED_TABLE_COLUMNS.items():
-        if not inspector.has_table(table_name):
-            continue
-        existing_columns = {column["name"] for column in inspector.get_columns(table_name)}
-        missing_columns = sorted(expected_columns - existing_columns)
-        if missing_columns:
-            mismatches[table_name] = missing_columns
-
-    return mismatches
+    async with engine.begin() as connection:
+        return await connection.run_sync(inner)
 
 
-def reset_database() -> None:
+async def get_schema_mismatches() -> dict[str, list[str]]:
+    def inspect_schema(sync_connection):
+        inspector = inspect(sync_connection)
+        mismatches: dict[str, list[str]] = {}
+        for table_name, expected_columns in EXPECTED_TABLE_COLUMNS.items():
+            if not inspector.has_table(table_name):
+                continue
+            existing_columns = {column["name"] for column in inspector.get_columns(table_name)}
+            missing_columns = sorted(expected_columns - existing_columns)
+            if missing_columns:
+                mismatches[table_name] = missing_columns
+        return mismatches
+
+    async with engine.begin() as connection:
+        return await connection.run_sync(inspect_schema)
+
+
+async def reset_database() -> None:
     logger.warning("Resetting local database and recreating tables.")
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.drop_all)
+        await connection.run_sync(Base.metadata.create_all)
 
 
-def initialize_database() -> None:
+async def initialize_database() -> None:
     from app.models import chat, preference  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
-    mismatches = get_schema_mismatches()
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    mismatches = await get_schema_mismatches()
     if not mismatches:
         return
 
-    if settings.auto_reset_db_on_schema_mismatch and settings.app_env.lower() == "development":
-        logger.warning("Detected SQLite schema mismatch: %s", mismatches)
-        reset_database()
+    if settings.auto_reset_db_on_schema_mismatch and settings.is_development:
+        logger.warning("Detected schema mismatch; auto-resetting local database: %s", mismatches)
+        await reset_database()
         return
 
     mismatch_summary = "; ".join(
@@ -100,10 +123,10 @@ def initialize_database() -> None:
     )
 
 
-def init_db() -> None:
-    initialize_database()
+async def init_db() -> None:
+    await initialize_database()
 
 
-def ping_database() -> None:
-    with engine.connect() as connection:
-        connection.execute(text("SELECT 1"))
+async def ping_database() -> None:
+    async with engine.connect() as connection:
+        await connection.execute(text("SELECT 1"))

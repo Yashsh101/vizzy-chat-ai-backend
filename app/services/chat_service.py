@@ -1,29 +1,40 @@
-from sqlalchemy.orm import Session
+from dataclasses import dataclass
+from collections.abc import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat import ChatHistory
 from app.models.preference import UserPreference
-from app.schemas.chat import ChatRequest, ChatResponseData
+from app.schemas.chat import ChatRequest, ChatResponseData, GeneratePromptResponseData, IntentClassification
 from app.services.ai_service import AIService
 from app.services.history_service import HistoryService
 from app.services.intent_classifier import IntentClassifier
 from app.services.prompt_engine import PromptEngine
 
 
+@dataclass
+class PreparedChat:
+    classification: IntentClassification
+    prompt_bundle: GeneratePromptResponseData
+    recent_history: list[str]
+    preferences: dict
+
+
 class ChatService:
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self.intent_classifier = IntentClassifier()
         self.prompt_engine = PromptEngine(db)
         self.history_service = HistoryService(db)
         self.ai_service = AIService()
 
-    def process_chat(self, request: ChatRequest) -> ChatResponseData:
+    async def prepare_chat(self, request: ChatRequest) -> PreparedChat:
         classification = self.intent_classifier.classify(request.message)
-        recent_history = self.history_service.get_recent_messages(request.user_id)
-        preferences_record = self.db.get(UserPreference, request.user_id)
+        recent_history = await self.history_service.get_recent_messages(request.user_id)
+        preferences_record = await self.db.get(UserPreference, request.user_id)
         preferences = preferences_record.preferences if preferences_record else {}
 
-        prompt_bundle = self.prompt_engine.generate_prompt_bundle_from_chat(
+        prompt_bundle = await self.prompt_engine.generate_prompt_bundle_from_chat(
             user_id=request.user_id,
             message=request.message,
             user_type=request.user_type,
@@ -33,20 +44,41 @@ class ChatService:
             preferences=preferences,
         )
 
-        response = self.ai_service.generate_chat_response(
-            message=request.message,
+        return PreparedChat(
             classification=classification,
-            image_prompts=prompt_bundle.image_prompts,
-            copy_suggestions=prompt_bundle.copy_suggestions,
-            next_suggestions=prompt_bundle.next_suggestions,
+            prompt_bundle=prompt_bundle,
             recent_history=recent_history,
             preferences=preferences,
         )
 
-        self._store_chat(request, response)
+    async def process_chat(self, request: ChatRequest) -> ChatResponseData:
+        prepared = await self.prepare_chat(request)
+        response = await self.ai_service.generate_chat_response(
+            message=request.message,
+            classification=prepared.classification,
+            image_prompts=prepared.prompt_bundle.image_prompts,
+            copy_suggestions=prepared.prompt_bundle.copy_suggestions,
+            next_suggestions=prepared.prompt_bundle.next_suggestions,
+            recent_history=prepared.recent_history,
+            preferences=prepared.preferences,
+        )
+        await self.store_chat(request, response)
         return response
 
-    def _store_chat(self, request: ChatRequest, response: ChatResponseData) -> None:
+    async def stream_chat(
+        self,
+        request: ChatRequest,
+    ) -> tuple[PreparedChat, AsyncGenerator[tuple[str, str], None]]:
+        prepared = await self.prepare_chat(request)
+        stream = self.ai_service.stream_text(
+            message=request.message,
+            classification=prepared.classification,
+            recent_history=prepared.recent_history,
+            preferences=prepared.preferences,
+        )
+        return prepared, stream
+
+    async def store_chat(self, request: ChatRequest, response: ChatResponseData) -> None:
         record = ChatHistory(
             user_id=request.user_id,
             user_type=request.user_type,
@@ -63,4 +95,4 @@ class ChatService:
             provider=response.provider,
         )
         self.db.add(record)
-        self.db.commit()
+        await self.db.commit()

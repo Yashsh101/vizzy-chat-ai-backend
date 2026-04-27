@@ -1,6 +1,6 @@
 from typing import Any
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.preference import UserPreference
 from app.schemas.chat import (
@@ -12,17 +12,17 @@ from app.services.intent_classifier import IntentClassifier
 
 
 class PromptEngine:
-    def __init__(self, db: Session | None) -> None:
+    def __init__(self, db: AsyncSession | None) -> None:
         self.db = db
         self.intent_classifier = IntentClassifier()
 
-    def generate_prompt_bundle(self, request: GeneratePromptRequest) -> GeneratePromptResponseData:
+    async def generate_prompt_bundle(self, request: GeneratePromptRequest) -> GeneratePromptResponseData:
         classification = (
             self.intent_classifier.classify(request.message)
             if request.intent is None
             else self._classification_from_intent(request.intent)
         )
-        preferences = self._load_preferences(request.user_id) if request.user_id else {}
+        preferences = await self._load_preferences(request.user_id) if request.user_id else {}
         context = dict(request.context or {})
         return self._build_bundle(
             message=request.message,
@@ -33,7 +33,7 @@ class PromptEngine:
             preferences=preferences,
         )
 
-    def generate_prompt_bundle_from_chat(
+    async def generate_prompt_bundle_from_chat(
         self,
         user_id: str,
         message: str,
@@ -45,7 +45,7 @@ class PromptEngine:
     ) -> GeneratePromptResponseData:
         merged_context = dict(context or {})
         if not preferences:
-            loaded_preferences = self._load_preferences(user_id)
+            loaded_preferences = await self._load_preferences(user_id)
             if loaded_preferences:
                 preferences = loaded_preferences
 
@@ -82,7 +82,11 @@ class PromptEngine:
                 f"Keep the same objective but shift the art direction while respecting this context: {creative_context}."
             ),
         ]
-        copy_tone = "warm, personal, and inspiring" if user_type == "home" else "strategic, brand-ready, and persuasive"
+        copy_tone = (
+            "warm, personal, and inspiring"
+            if user_type == "home"
+            else "strategic, brand-ready, and persuasive"
+        )
         copy_suggestions = [
             f"Write a {copy_tone} headline that supports this brief: {message}",
             f"Write a concise supporting line aligned with the {classification.intent.replace('_', ' ')} direction.",
@@ -95,10 +99,10 @@ class PromptEngine:
             next_suggestions=next_suggestions,
         )
 
-    def _load_preferences(self, user_id: str) -> dict[str, Any]:
+    async def _load_preferences(self, user_id: str) -> dict[str, Any]:
         if self.db is None:
             return {}
-        record = self.db.get(UserPreference, user_id)
+        record = await self.db.get(UserPreference, user_id)
         return record.preferences if record else {}
 
     def _classification_from_intent(self, intent: str) -> IntentClassification:

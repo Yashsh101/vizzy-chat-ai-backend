@@ -45,6 +45,18 @@ class ChatResponseData(BaseModel):
     provider: str
 
 
+class StreamEventData(BaseModel):
+    event: Literal["start", "token", "done", "error"]
+    classification: IntentClassification | None = None
+    token: str | None = None
+    generated_response: str | None = None
+    image_prompts: list[str] = Field(default_factory=list)
+    copy_suggestions: list[str] = Field(default_factory=list)
+    next_suggestions: list[str] = Field(default_factory=list)
+    recent_history_used: list[str] = Field(default_factory=list)
+    preferences_used: dict[str, Any] = Field(default_factory=dict)
+
+
 class HistoryResponseData(BaseModel):
     user_id: str
     items: list[ChatHistoryItem]

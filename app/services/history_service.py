@@ -1,5 +1,5 @@
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.chat import ChatHistory
@@ -7,26 +7,28 @@ from app.schemas.chat import ChatHistoryItem, HistoryResponseData, IntentClassif
 
 
 class HistoryService:
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self.settings = get_settings()
 
-    def get_recent_messages(self, user_id: str) -> list[str]:
+    async def get_recent_messages(self, user_id: str) -> list[str]:
         query = (
             select(ChatHistory.message)
             .where(ChatHistory.user_id == user_id)
             .order_by(ChatHistory.created_at.desc())
             .limit(self.settings.history_window)
         )
-        return list(reversed(self.db.scalars(query).all()))
+        result = await self.db.scalars(query)
+        return list(reversed(result.all()))
 
-    def get_user_history(self, user_id: str) -> HistoryResponseData:
+    async def get_user_history(self, user_id: str) -> HistoryResponseData:
         query = (
             select(ChatHistory)
             .where(ChatHistory.user_id == user_id)
             .order_by(ChatHistory.created_at.asc())
         )
-        items = self.db.scalars(query).all()
+        result = await self.db.scalars(query)
+        items = result.all()
         return HistoryResponseData(
             user_id=user_id,
             items=[
