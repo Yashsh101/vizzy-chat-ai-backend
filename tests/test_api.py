@@ -30,8 +30,34 @@ async def test_chat_endpoint_returns_enveloped_response(async_client):
     assert payload["success"] is True
     assert payload["data"]["classification"]["intent"] == "poster_design"
     assert payload["data"]["classification"]["pathway"] == "creative_visual_generation"
-    assert len(payload["data"]["image_prompts"]) == 2
+    assert len(payload["data"]["image_prompts"]) == 3  # Updated to 3 prompts
     assert payload["provider"] == "mock"
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_endpoint_returns_sse_events(async_client):
+    response = await async_client.post(
+        "/api/chat/stream",
+        json={
+            "user_id": "stream_user",
+            "message": "Hello",
+            "user_type": "business",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+    
+    # Read the streaming response
+    content = b""
+    async for chunk in response.aiter_bytes():
+        content += chunk
+    
+    text = content.decode("utf-8")
+    assert "event: start" in text
+    assert "event: token" in text
+    assert "event: done" in text
+    assert '"event": "done"' in text
 
 
 @pytest.mark.asyncio

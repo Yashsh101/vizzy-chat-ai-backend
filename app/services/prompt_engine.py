@@ -58,6 +58,17 @@ class PromptEngine:
             preferences=preferences,
         )
 
+    def _detect_tone(self, message: str) -> str:
+        message_lower = message.lower()
+        if any(word in message_lower for word in ["luxury", "premium", "elegant", "sophisticated"]):
+            return "luxury"
+        elif any(word in message_lower for word in ["minimal", "clean", "simple", "modern"]):
+            return "minimal"
+        elif any(word in message_lower for word in ["bold", "vibrant", "dynamic", "striking"]):
+            return "bold"
+        else:
+            return "balanced"
+
     def _build_bundle(
         self,
         message: str,
@@ -67,6 +78,7 @@ class PromptEngine:
         recent_history: list[str],
         preferences: dict[str, Any],
     ) -> GeneratePromptResponseData:
+        tone = self._detect_tone(message)
         creative_context = self._serialize_context(context, recent_history, preferences)
         audience = "home lifestyle audience" if user_type == "home" else "business marketing audience"
         image_prompts = [
@@ -74,12 +86,18 @@ class PromptEngine:
                 f"Create a polished {classification.intent.replace('_', ' ')} concept for a {audience}. "
                 f"User brief: {message}. "
                 f"Creative pathway: {classification.pathway}. "
+                f"Style tone: {tone}. "
                 f"Use this context: {creative_context}. "
                 "Aim for strong composition, premium detail, and execution-ready clarity."
             ),
             (
                 f"Create a second variation for this {classification.intent.replace('_', ' ')} request: {message}. "
-                f"Keep the same objective but shift the art direction while respecting this context: {creative_context}."
+                f"Keep the same objective but shift the art direction while respecting this context: {creative_context}. "
+                f"Style tone: {tone}."
+            ),
+            (
+                f"Create a third alternative for this {classification.intent.replace('_', ' ')} request: {message}. "
+                f"Focus on a different creative approach with style tone {tone}, using context: {creative_context}."
             ),
         ]
         copy_tone = (
