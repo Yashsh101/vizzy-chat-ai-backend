@@ -1,1 +1,0 @@
-"""Vizzy Chat backend package."""

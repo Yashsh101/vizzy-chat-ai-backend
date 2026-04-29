@@ -1,249 +1,103 @@
-# Vizzy Chat AI Backend
-
 [![CI](https://github.com/your-github-username/vizzy-chat-ai-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/your-github-username/vizzy-chat-ai-backend/actions/workflows/ci.yml)
 
-## System Overview
+# Vizzy Chat AI Backend
 
-Vizzy Chat is a production-grade AI backend that transforms raw AI model calls into a structured, memory-aware, streaming-enabled creative assistant. Unlike typical demo projects, this system demonstrates real-world engineering practices: async architecture, comprehensive error handling, observability, rate limiting, and scalable data persistence.
+Real-time, memory-aware FastAPI backend for creative AI products with streaming chat, Gemini text generation, and Imagen-powered image generation.
 
-**What makes this stand out:** This isn't just another FastAPI tutorial—it's a complete AI product backend that handles the complexities of user memory, real-time streaming, intent classification, and multi-modal generation while maintaining clean code and robust testing.
+## What This Project Solves
 
-## Problem Solved
+Most AI creative products fail in one of two ways:
 
-Modern AI products often fail at the "product layer"—they expose model APIs directly without:
-- **Memory & Context**: Remembering user preferences and conversation history
-- **Streaming UX**: Real-time token-by-token responses
-- **Intent Understanding**: Classifying user requests for better responses
-- **Production Readiness**: Logging, rate limiting, error handling, and deployment
-- **Fallback Safety**: Graceful degradation when AI services fail
+- they expose raw model calls with no product-layer structure
+- they feel responsive in demos, but break down when you need memory, streaming, image generation, stable configuration, and deployment hygiene
 
-Vizzy Chat solves these by providing a complete backend that turns natural language into structured creative outputs.
+Vizzy Chat is the backend layer that closes that gap. It takes natural-language creative requests, classifies user intent, remembers recent context and saved preferences, generates polished prompts, streams responses in real time, and can create actual images through Gemini Imagen with a clean fallback path when credentials are not available.
 
 ## Key Features
 
-### 🚀 Core Capabilities
-- **Real-time Streaming Chat**: Server-Sent Events with `start` → `token` → `done` flow
-- **Memory-Aware Responses**: Incorporates last 3 conversations and user preferences
-- **Intent Classification**: Routes requests through creative pathways (posters, campaigns, etc.)
-- **Multi-Modal Generation**: Text prompts + image generation via Gemini Imagen
-- **Style Tone Detection**: Automatically detects luxury/minimal/bold tones
+- Async FastAPI backend with non-blocking routes and async SQLAlchemy
+- Standardized API envelope with `success`, `data`, `error`, `metadata`, `latency_ms`, and `provider`
+- Streaming chat over Server-Sent Events at `POST /api/chat/stream`
+- Gemini text integration with mock fallback
+- Imagen image generation at `POST /api/images/generate`
+- Memory-aware responses using the last 3 chats and saved user preferences
+- Intent classification with `intent`, `confidence`, `reasoning`, and `pathway`
+- Request IDs, latency tracking, logging, validation, and structured errors
+- Secure-ish container setup with non-root user and Docker healthcheck
+- GitHub Actions CI for lint and tests
 
-### 🏗️ Production Engineering
-- **Async FastAPI**: Non-blocking routes with async SQLAlchemy
-- **Structured Logging**: JSON-formatted logs with request IDs and latency
-- **Rate Limiting**: In-memory limiter (10 req/min per client)
-- **Request Tracking**: UUID request IDs in logs and responses
-- **Comprehensive Testing**: 13+ tests covering API, services, and memory
-- **Docker Ready**: Multi-stage build with health checks
+## Architecture
 
-### 📊 API Design
-- **Standardized Envelope**: `success`/`data`/`error`/`metadata`/`latency_ms`/`provider`
-- **Streaming Events**: Proper SSE with event types and structured payloads
-- **Error Handling**: Typed errors with codes and details
-- **Validation**: Pydantic schemas with detailed error messages
-
-## Architecture Diagram
-
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Client Apps   │────│   FastAPI Routes │────│  Service Layer  │
-│                 │    │                  │    │                 │
-│ • Web Frontend  │    │ • /api/chat      │    │ • ChatService   │
-│ • Mobile App    │    │ • /api/chat/stream│    │ • PromptEngine  │
-│ • API Consumers │    │ • /api/images    │    │ • IntentClassifier│
-└─────────────────┘    │ • /api/history   │    │ • AIService     │
-                       │ • /api/health    │    │ • HistoryService│
-                       └──────────────────┘    │ • PreferenceSvc │
-                                                └─────────────────┘
-                                                       │
-                                                       ▼
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│  Gemini AI      │    │ Async SQLAlchemy │    │   Mock Fallback │
-│                 │    │                  │    │                 │
-│ • Text Gen      │◄───│ • chat_history   │────│ • Safe responses│
-│ • Image Gen     │    │ • user_preferences│    │ • No crashes   │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-```
-
-## Streaming Explanation
-
-Streaming responses use Server-Sent Events for real-time UX:
-
-```javascript
-// Client-side consumption
-const eventSource = new EventSource('/api/chat/stream');
-
-eventSource.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  if (data.event === 'start') {
-    // Show loading, display classification
-  } else if (data.event === 'token') {
-    // Append token to response text
-  } else if (data.event === 'done') {
-    // Complete response, show full data
-  }
-};
+```text
+Client
+  |
+  v
+FastAPI Routes
+  - /api/chat
+  - /api/chat/stream
+  - /api/images/generate
+  - /api/history/{user_id}
+  - /api/preferences
+  - /api/generate-prompt
+  |
+  v
+Service Layer
+  - ChatService
+  - ImageService
+  - PromptEngine
+  - IntentClassifier
+  - AIService
+  - HistoryService
+  - PreferenceService
+  |
+  +--> Gemini text generation
+  +--> Gemini Imagen generation
+  +--> Mock fallback providers
+  |
+  v
+Async SQLAlchemy + SQLite
+  - chat_history
+  - user_preferences
 ```
 
-Each event includes full metadata, request ID, and latency tracking.
+## Tech Stack
 
-## Memory System
+- Python 3.11+
+- FastAPI
+- SQLAlchemy asyncio
+- aiosqlite
+- Pydantic v2
+- Google GenAI SDK
+- Pytest + pytest-asyncio
+- Ruff
+- Docker
+- GitHub Actions
 
-The backend maintains two types of memory:
+## Project Structure
 
-### Conversation History
-- Stores last 3 user messages per user
-- Influences prompt generation and suggestions
-- Persisted in SQLite with timestamps
-
-### User Preferences
-- Long-term style preferences (e.g., "always use warm colors")
-- Saved via `/api/preferences` endpoint
-- Merged with conversation context
-
-## API Examples
-
-### Chat Request
-```bash
-curl -X POST http://localhost:8000/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "designer_123",
-    "message": "Create a luxury coffee shop poster with warm lighting",
-    "user_type": "business",
-    "context": {"platform": "instagram"}
-  }'
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "classification": {
-      "intent": "poster_design",
-      "confidence": 0.83,
-      "pathway": "creative_visual_generation"
-    },
-    "generated_response": "I've mapped this to poster design...",
-    "image_prompts": ["Create a polished poster...", "...second variation...", "...third alternative..."],
-    "copy_suggestions": ["Write a strategic headline...", "...supporting line..."],
-    "next_suggestions": ["Request minimalist variation..."],
-    "recent_history_used": ["previous messages..."],
-    "preferences_used": {}
-  },
-  "metadata": {
-    "request_id": "550e8400-e29b-41d4-a716-446655440000",
-    "timestamp": "2026-04-29T15:42:01Z",
-    "component": "chat"
-  },
-  "latency_ms": 45.2,
-  "provider": "mock"
-}
-```
-
-### Streaming Chat
-```bash
-curl -N http://localhost:8000/api/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"user_id": "user_1", "message": "Hello"}'
-```
-
-**Output:**
-```
-event: start
-data: {"event": "start", "classification": {...}}
-
-event: token
-data: {"event": "token", "token": "I "}
-
-event: token
-data: {"event": "token", "token": "have "}
-
-...
-
-event: done
-data: {"event": "done", "generated_response": "Full response..."}
-```
-
-## Setup Instructions
-
-### Prerequisites
-- Python 3.12+
-- Docker (optional)
-
-### Local Development
-```bash
-# Clone and setup
-git clone https://github.com/your-github-username/vizzy-chat-ai-backend
-cd vizzy-chat-ai-backend
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run tests
-pytest
-
-# Start server
-uvicorn app.main:app --reload
-
-# Visit http://localhost:8000/docs for API docs
-```
-
-### Docker
-```bash
-# Build and run
-docker build -t vizzy-chat .
-docker run -p 8000:8000 vizzy-chat
-
-# Health check
-curl http://localhost:8000/api/health
-```
-
-### Configuration
-Set environment variables:
-- `GEMINI_API_KEY`: For real AI generation (optional, uses mock fallback)
-- `LOG_LEVEL`: INFO/DEBUG/etc.
-
-## Interview Explanation
-
-**Why this project stands out:**
-
-1. **Real Product Thinking**: Most candidates build CRUD APIs or simple ML demos. This shows you understand building AI *products*—memory, streaming, UX considerations.
-
-2. **Production Practices**: Request IDs, structured logging, rate limiting, async patterns—these are what senior engineers implement.
-
-3. **Scalable Architecture**: Clean separation of concerns, dependency injection, comprehensive testing. Easy to extend with new AI providers or features.
-
-4. **Error Handling**: Graceful fallbacks, typed errors, no crashes. Shows reliability thinking.
-
-5. **Performance**: Async everywhere, streaming responses, efficient queries. Handles real load.
-
-**What interviewers will ask:**
-- How does streaming work? (SSE, async generators)
-- Memory implementation? (SQLAlchemy relationships, context merging)
-- Testing strategy? (Service layer mocking, async fixtures)
-- Deployment considerations? (Docker, health checks, env config)
-
-**Tech Stack Rationale:**
-- FastAPI: Async, auto-docs, validation
-- SQLAlchemy Async: Non-blocking DB
-- Pydantic: Type safety
-- SSE: Real-time UX without WebSockets complexity
-- Docker: Consistent deployment
-
-## Future Roadmap
-
-- [ ] Redis for distributed rate limiting
-- [ ] PostgreSQL for production DB
-- [ ] Authentication/Authorization
-- [ ] Metrics collection (Prometheus)
-- [ ] Multi-region deployment
-- [ ] Advanced prompt engineering with few-shot examples
-
----
-
-**Built with production intent. Ready for real users.**
+```text
+app/
+  main.py
+  api/
+    routes.py
+  core/
+    config.py
+    exceptions.py
+    logging.py
+    middleware.py
+    responses.py
+  db/
+    base.py
+    manage.py
+    session.py
+  models/
+    chat.py
+    preference.py
+  schemas/
+    base.py
+    chat.py
+    health.py
+    image.py
     preference.py
   services/
     ai_service.py

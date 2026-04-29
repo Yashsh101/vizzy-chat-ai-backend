@@ -1,9 +1,0 @@
-{
-  "user_id": "demo_user",
-  "message": "Create a premium coffee shop poster with warm lighting and hand-drawn lettering",
-  "user_type": "business",
-  "context": {
-    "platform": "instagram",
-    "goal": "launch weekend offer"
-  }
-}
