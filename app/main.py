@@ -1,9 +1,10 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.routes import router as api_router
 from app.core.config import get_settings
@@ -62,6 +63,23 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             code="validation_error",
             message="Request validation failed.",
             details=exc.errors(),
+        ).model_dump(),
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    message = exc.detail if isinstance(exc.detail, str) else "HTTP error."
+    code = "not_found" if exc.status_code == 404 else "http_error"
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=build_error_response(
+            request=request,
+            provider="system",
+            code=code,
+            message=message,
+            details=None if isinstance(exc.detail, str) else exc.detail,
         ).model_dump(),
     )
 
