@@ -29,7 +29,7 @@ async def test_prompt_engine_generates_context_aware_prompts():
         )
     )
 
-    assert len(result.image_prompts) == 2
+    assert len(result.image_prompts) == 3
     assert "cinematic" in result.image_prompts[0]
 
 

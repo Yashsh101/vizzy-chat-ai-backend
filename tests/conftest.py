@@ -8,6 +8,7 @@ from app import models  # noqa: F401
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.core.middleware import rate_limiter
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test_vizzy_chat.db"
 
@@ -22,6 +23,7 @@ async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
 
 @pytest_asyncio.fixture(autouse=True)
 async def setup_database():
+    rate_limiter.requests.clear()
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.drop_all)
         await connection.run_sync(Base.metadata.create_all)
