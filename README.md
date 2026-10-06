@@ -126,7 +126,7 @@ Swagger docs:
 
 ## Environment Variables
 
-See [.env.example](C:/Users/syash/OneDrive/Desktop/vizzy-chat-ai-backend/.env.example).
+See [.env.example](.env.example).
 
 Main variables:
 
@@ -241,5 +241,6 @@ This repository itself now uses correct GitHub URLs in the README and CI badge.
 ## Notes
 
 - The app runs without a Gemini key by falling back to mock providers.
+- This repository does not provide a hosted deployment or measured performance results; treat it as a local/reference implementation rather than a production deployment.
 - Local database files and cache folders should not be committed.
 - The current structure is intentionally simple and suitable for internship review.
